@@ -1,0 +1,19 @@
+{
+  "name": "safelight-vectorscope",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "typescript": "~6.0.3",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.10"
+  },
+  "license": "MIT",
+  "keywords": ["safelight-extension"]
+}

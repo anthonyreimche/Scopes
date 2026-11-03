@@ -46,12 +46,15 @@ export function HoverOverlay(): ReactElement {
     };
 
     window.addEventListener("pointermove", onPointerMove);
-    document.addEventListener("pointerleave", clear);
+    // pointerleave does not bubble and is never dispatched on document, so
+    // the root element is the one that sees the pointer leave the window.
+    const root = document.documentElement;
+    root.addEventListener("pointerleave", clear);
     window.addEventListener("blur", clear);
 
     return () => {
       window.removeEventListener("pointermove", onPointerMove);
-      document.removeEventListener("pointerleave", clear);
+      root.removeEventListener("pointerleave", clear);
       window.removeEventListener("blur", clear);
       if (frame !== NO_FRAME) cancelAnimationFrame(frame);
       clear();

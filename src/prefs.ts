@@ -1,5 +1,5 @@
 // Vectorscope display preferences: the panel's own controls (scope, model,
-// trace, scale, zoom, range, colorize) and the Preferences rows (sample
+// trace, scale, zoom, range, colourize) and the Preferences rows (sample
 // size, intensity, the graticule toggles). All of it is global — shared
 // across every photo, never saved into a develop edit. It persists through
 // the host's per-extension settings store, which keeps any key written via

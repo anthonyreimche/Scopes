@@ -4,7 +4,9 @@
 // Ink cannot come from CSS: canvas strokes and ctx.font never resolve
 // var(), so the palette is derived from the canvas's own resolved
 // background colour and the mono family is read off the document element
-// once per draw. Both are re-read whenever the theme store changes.
+// once per draw. Both are re-read whenever the theme store changes or the
+// document element's style or class does, which is how overrides such as
+// high contrast recolour the surface without changing the active theme.
 //
 // Rebuilding a trace costs a pass over every sampled pixel, so one painted
 // layer per channel is cached against a key covering everything that can
@@ -22,6 +24,7 @@ import { gamutOutline, hueLut } from "./graticule";
 import type { Prefs } from "./prefs";
 import { effectiveTrace } from "./prefs";
 import { api, h } from "./runtime";
+import type { StoreApi, ThemeStoreState } from "./safelight";
 import { store } from "./store";
 import { accumulateWave, paintWave, waveGridSize } from "./waveform";
 
@@ -66,6 +69,19 @@ export function paletteFor(canvas: HTMLCanvasElement): PaletteChoice {
   const match = RGB_CHANNELS.exec(getComputedStyle(canvas).backgroundColor);
   if (match === null) return DARK_SURFACE;
   return paletteForBackground(Number(match[1]), Number(match[2]), Number(match[3]));
+}
+
+/** Calls onChange when the active theme switches or the document element's style or class changes; returns the cleanup. */
+export function watchTheme(themeStore: StoreApi<ThemeStoreState>, onChange: () => void): () => void {
+  const unsubscribe = themeStore.subscribe((state, previous) => {
+    if (state.activeId !== previous.activeId) onChange();
+  });
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class"] });
+  return () => {
+    unsubscribe();
+    observer.disconnect();
+  };
 }
 
 const FALLBACK_MONO = "ui-monospace, monospace";
@@ -159,6 +175,12 @@ const DEFAULT_WIDTH = 240;
 const CANVAS_RADIUS = 4;
 const HOVER_HINT = "Hover the image to place its pixel on the scope";
 
+const SCOPE_LABELS: Readonly<Record<Prefs["scope"], string>> = {
+  vector: "Vectorscope",
+  wave: "Waveform",
+  parade: "RGB parade",
+};
+
 export function ScopeView({ prefs }: { prefs: Prefs }): ReactElement {
   const { useEffect, useRef, useState } = api().react;
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -185,11 +207,7 @@ export function ScopeView({ prefs }: { prefs: Prefs }): ReactElement {
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    return api().stores.useThemeStore.subscribe((state, previous) => {
-      if (state.activeId !== previous.activeId) setThemeEpoch((epoch) => epoch + 1);
-    });
-  }, []);
+  useEffect(() => watchTheme(api().stores.useThemeStore, () => setThemeEpoch((epoch) => epoch + 1)), []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -260,6 +278,8 @@ export function ScopeView({ prefs }: { prefs: Prefs }): ReactElement {
     h("canvas", {
       ref: canvasRef,
       title: HOVER_HINT,
+      role: "img",
+      "aria-label": `${SCOPE_LABELS[prefs.scope]} of the open photo`,
       onPointerMove,
       onPointerLeave: () => setCursor(null),
       style: {

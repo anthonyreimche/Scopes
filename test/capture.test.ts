@@ -2,8 +2,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Sample } from "../src/colour";
-import { THROTTLE_MS, createRetainer, readbackBitmap, startSampler } from "../src/capture";
-import type { DevelopParams, DevelopStoreState, StoreApi } from "../src/safelight";
+import { THROTTLE_MS, createRetainer, readbackBitmap, readbackFloatFrame, startSampler } from "../src/capture";
+import type { DevelopParams, DevelopStoreState, FloatFrame, StoreApi } from "../src/safelight";
 
 /** A minimal zustand-like fake for DevelopStoreState: getState, setState merging a partial, subscribe. */
 function fakeDevelop(initial: DevelopStoreState): StoreApi<DevelopStoreState> {
@@ -428,5 +428,106 @@ describe("readbackBitmap", () => {
     expect(sample?.width).toBe(320);
     expect(sample?.height).toBe(213);
     expect(sample?.data.length).toBe(320 * 213 * 4);
+  });
+});
+
+function floatFrame(values: number[], width: number, height: number): FloatFrame {
+  return {
+    data: new Float32Array(values),
+    width,
+    height,
+    space: { encoding: "perceptual", primaries: "rec709" },
+    point: "pre-output",
+  };
+}
+
+describe("readbackFloatFrame", () => {
+  it("keeps the unclamped floats and clamps the bytes beside them", () => {
+    const frame = floatFrame([1.5, 0.5, -0.25, 1, 0, 1, 2, 1, 0, 0, 0, 1, 1, 1, 1, 1], 2, 2);
+    const sample = readbackFloatFrame(frame);
+    expect(sample?.width).toBe(2);
+    expect(sample?.height).toBe(2);
+    expect(Array.from(sample?.floats?.slice(0, 8) ?? [])).toEqual([1.5, 0.5, -0.25, 1, 0, 1, 2, 1]);
+    expect(Array.from(sample?.data.slice(0, 8) ?? [])).toEqual([255, 128, 0, 255, 0, 255, 255, 255]);
+  });
+
+  it("returns null under 2 px in either dimension", () => {
+    expect(readbackFloatFrame(floatFrame([0, 0, 0, 1], 1, 1))).toBeNull();
+  });
+});
+
+describe("startSampler — float capture", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("publishes a float sample and never captures 8-bit when the float frame arrives", async () => {
+    const develop = fakeDevelop(baseState());
+    const rig = createCaptureRig();
+    const published: Array<Sample | null> = [];
+    const frame = floatFrame([2, 0, -1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1], 2, 2);
+
+    const stop = startSampler({
+      develop,
+      capture: rig.capture,
+      readback: () => FIXED_SAMPLE,
+      captureFloat: () => Promise.resolve(frame),
+      readbackFloat: readbackFloatFrame,
+      publish: (s) => published.push(s),
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(rig.calls).toHaveLength(0);
+    expect(published).toHaveLength(1);
+    expect(published[0]?.floats?.[0]).toBe(2);
+    stop();
+  });
+
+  it("falls back to the 8-bit capture when the float frame is null", async () => {
+    const develop = fakeDevelop(baseState());
+    const rig = createCaptureRig();
+    const published: Array<Sample | null> = [];
+
+    const stop = startSampler({
+      develop,
+      capture: rig.capture,
+      readback: () => FIXED_SAMPLE,
+      captureFloat: () => Promise.resolve(null),
+      readbackFloat: readbackFloatFrame,
+      publish: (s) => published.push(s),
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(rig.calls).toHaveLength(1);
+    rig.resolvers[0].resolve(fakeBitmap(2, 1));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(published).toEqual([FIXED_SAMPLE]);
+    stop();
+  });
+
+  it("falls back to the 8-bit capture when the float capture rejects", async () => {
+    const develop = fakeDevelop(baseState());
+    const rig = createCaptureRig();
+    const published: Array<Sample | null> = [];
+
+    const stop = startSampler({
+      develop,
+      capture: rig.capture,
+      readback: () => FIXED_SAMPLE,
+      captureFloat: () => Promise.reject(new Error("no float targets")),
+      readbackFloat: readbackFloatFrame,
+      publish: (s) => published.push(s),
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(rig.calls).toHaveLength(1);
+    rig.resolvers[0].resolve(fakeBitmap(2, 1));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(published).toEqual([FIXED_SAMPLE]);
+    stop();
   });
 });

@@ -14,7 +14,7 @@ import type { Prefs } from "./prefs";
 import { effectiveTrace } from "./prefs";
 import type { Uv } from "./store";
 import type { Lane, ScopeType } from "./waveform";
-import { CHANNEL_COLOURS, LEVEL_LINES, laneLayout } from "./waveform";
+import { CHANNEL_COLOURS, LEVEL_LINES, laneLayout, levelFraction } from "./waveform";
 
 export const LEVEL_GUTTER = 22;
 
@@ -75,9 +75,9 @@ function rgbCss(colour: Rgb8): string {
   return `rgb(${colour[0]}, ${colour[1]}, ${colour[2]})`;
 }
 
-/** Level (0..1) -> canvas y; level 1 sits at the top of the plot. */
-function levelY(plot: WavePlot, level: number): number {
-  return plot.y0 + (1 - level) * plot.height;
+/** Level (1 = full scale) -> canvas y; the plot keeps a band above level 1 and below level 0 for values outside the range. */
+export function levelY(plot: WavePlot, level: number): number {
+  return plot.y0 + (1 - levelFraction(level)) * plot.height;
 }
 
 /** Column (0..1 across a lane) -> canvas x. */

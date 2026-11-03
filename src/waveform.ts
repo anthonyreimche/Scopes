@@ -5,7 +5,7 @@
 // level 1 lands at image row 0, the top.
 
 import type { Sample } from "./colour";
-import { luma8 } from "./colour";
+import { rec709Luma } from "./colour";
 import type { Palette, Rgb8 } from "./density";
 import { mix, toneMap } from "./density";
 
@@ -32,6 +32,18 @@ export function waveGridSize(sample: Sample, plotW: number, plotH: number): { wi
   };
 }
 
+// --- Level axis ----------------------------------------------------------------
+
+/** Headroom above level 1 and below level 0, in levels: where over- and under-range values are drawn. */
+export const WAVE_HEADROOM = 0.0625;
+
+const WAVE_SPAN = 1 + 2 * WAVE_HEADROOM;
+
+/** A level (1 = full scale, unclamped) as a 0..1 fraction of the plot height, bottom up. */
+export function levelFraction(level: number): number {
+  return Math.min(1, Math.max(0, (level + WAVE_HEADROOM) / WAVE_SPAN));
+}
+
 // --- Accumulation --------------------------------------------------------------
 
 export interface WaveGrid {
@@ -39,7 +51,7 @@ export interface WaveGrid {
   height: number;
   channels: 1 | 3;
   counts: Uint32Array;
-  /** RGB byte sums per cell for the colourised luma trace (divide by count for the mean); null otherwise. */
+  /** RGB byte sums per cell for the colourized luma trace (divide by count for the mean); null otherwise. */
   sums: Float32Array | null;
   total: number;
 }
@@ -51,9 +63,13 @@ function planeIndex(plane: number, row: number, col: number, height: number, wid
 
 const BYTE_MAX = 255;
 
+function levelRow(level: number, height: number): number {
+  return Math.round(levelFraction(level) * (height - 1));
+}
+
 /** Accumulates every pixel of `sample` into a width x height grid: one row plane for luma, three (R/G/B) for rgb. */
 export function accumulateWave(sample: Sample, trace: Trace, colorize: boolean, width: number, height: number): WaveGrid {
-  const { data, width: sampleWidth, height: sampleHeight } = sample;
+  const { data, floats, width: sampleWidth, height: sampleHeight } = sample;
   const total = sampleWidth * sampleHeight;
   const channels: 1 | 3 = trace === "luma" ? 1 : 3;
   const counts = new Uint32Array(channels * height * width);
@@ -64,12 +80,13 @@ export function accumulateWave(sample: Sample, trace: Trace, colorize: boolean, 
     const r = data[o];
     const g = data[o + 1];
     const b = data[o + 2];
+    const levels = floats === undefined ? null : [floats[o], floats[o + 1], floats[o + 2]];
     const px = i % sampleWidth;
     const col = Math.min(width - 1, Math.floor((px * width) / sampleWidth));
 
     if (trace === "luma") {
-      const value = luma8(r, g, b) * BYTE_MAX;
-      const row = Math.round((value / BYTE_MAX) * (height - 1));
+      const [lr, lg, lb] = levels ?? [r / BYTE_MAX, g / BYTE_MAX, b / BYTE_MAX];
+      const row = levelRow(rec709Luma(lr, lg, lb), height);
       counts[planeIndex(0, row, col, height, width)]++;
       if (sums !== null) {
         sums[planeIndex(0, row, col, height, width)] += r;
@@ -77,9 +94,9 @@ export function accumulateWave(sample: Sample, trace: Trace, colorize: boolean, 
         sums[planeIndex(2, row, col, height, width)] += b;
       }
     } else {
-      const bytes = [r, g, b];
+      const channelLevels = levels ?? [r / BYTE_MAX, g / BYTE_MAX, b / BYTE_MAX];
       for (let ch = 0; ch < 3; ch++) {
-        const row = Math.round((bytes[ch] / BYTE_MAX) * (height - 1));
+        const row = levelRow(channelLevels[ch], height);
         counts[planeIndex(ch, row, col, height, width)]++;
       }
     }
@@ -109,13 +126,13 @@ export function laneLayout(plotWidth: number, lanes: 1 | 3, gap: number = DEFAUL
 
 // --- Painting --------------------------------------------------------------------
 
-/** Weight given to `lift` in the colourised-luma blend, scaled by density v. */
+/** Weight given to `lift` in the colourized-luma blend, scaled by density v. */
 const LUMA_LIFT_WEIGHT = 0.4;
 
 /**
  * Renders a wave grid to one RGBA buffer per channel (width*height*4,
  * row-major, image row 0 at the top — level 1). Empty cells stay
- * transparent (Uint8ClampedArray is zero-initialised). A luma grid paints
+ * transparent (Uint8ClampedArray is zero-initialized). A luma grid paints
  * `palette.ink` monochrome, or — when `colorize` and the grid carries
  * `sums` — the cell's mean colour lifted toward `palette.lift`; an rgb
  * grid paints each channel plane in `CHANNEL_COLOURS[ch]`.

@@ -3,7 +3,7 @@
 // floating — so this renders the body alone.
 //
 // The trace picker appears for the waveform only: a parade traces the three
-// channels by definition, so it has nothing to pick and nothing to colorize.
+// channels by definition, so it has nothing to pick and nothing to colourize.
 // Mounting is what starts the frame sampler, and unmounting is what stops it.
 
 import type { ReactElement } from "react";

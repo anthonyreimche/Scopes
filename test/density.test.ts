@@ -160,7 +160,7 @@ describe("paintDensity — monochrome", () => {
   });
 });
 
-describe("paintDensity — colourised", () => {
+describe("paintDensity — colourized", () => {
   it("the rim cell (t > 0.5) takes the LUT hue at full saturation, lifted toward `lift`", () => {
     const mapping = ycbcrMapping();
     const sample = solidSample(1, 1, 255, 0, 0);

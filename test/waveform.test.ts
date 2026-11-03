@@ -5,7 +5,15 @@ import type { Sample } from "../src/colour";
 import { luma8 } from "../src/colour";
 import type { Palette } from "../src/density";
 import { toneMap } from "../src/density";
-import { CHANNEL_COLOURS, LEVEL_LINES, accumulateWave, laneLayout, paintWave, waveGridSize } from "../src/waveform";
+import {
+  CHANNEL_COLOURS,
+  LEVEL_LINES,
+  accumulateWave,
+  laneLayout,
+  levelFraction,
+  paintWave,
+  waveGridSize,
+} from "../src/waveform";
 
 function solidSample(width: number, height: number, r: number, g: number, b: number): Sample {
   const data = new Uint8ClampedArray(width * height * 4);
@@ -125,7 +133,7 @@ describe("accumulateWave — rgb", () => {
   });
 });
 
-describe("accumulateWave — colourised luma", () => {
+describe("accumulateWave — colourized luma", () => {
   it("sums accumulate the pixel's own RGB bytes at its luma row", () => {
     const sample = sampleFromPixels(1, 1, [[200, 130, 40]]);
     const grid = accumulateWave(sample, "luma", true, 1, 4);
@@ -134,7 +142,7 @@ describe("accumulateWave — colourised luma", () => {
     expect(grid.counts[row * 1 + 0]).toBe(1);
 
     const sums = grid.sums;
-    if (!sums) throw new Error("expected sums to be allocated for a colourised luma trace");
+    if (!sums) throw new Error("expected sums to be allocated for a colourized luma trace");
     expect(sums[(0 * 4 + row) * 1 + 0]).toBe(200);
     expect(sums[(1 * 4 + row) * 1 + 0]).toBe(130);
     expect(sums[(2 * 4 + row) * 1 + 0]).toBe(40);
@@ -187,7 +195,7 @@ describe("paintWave — luma monochrome", () => {
   });
 });
 
-describe("paintWave — colourised luma", () => {
+describe("paintWave — colourized luma", () => {
   it("blends the cell's mean colour toward `lift` by 0.4v", () => {
     const sample = sampleFromPixels(1, 1, [[200, 130, 40]]);
     const grid = accumulateWave(sample, "luma", true, 1, 4);
@@ -243,5 +251,56 @@ describe("constants", () => {
 
   it("LEVEL_LINES marks the quarter levels", () => {
     expect(LEVEL_LINES).toEqual([0, 0.25, 0.5, 0.75, 1]);
+  });
+});
+
+/** A one-pixel float sample whose bytes are the clamped values, as capture builds it. */
+function floatSample(r: number, g: number, b: number): Sample {
+  const clamp = (v: number): number => Math.round(Math.min(1, Math.max(0, v)) * 255);
+  return {
+    data: new Uint8ClampedArray([clamp(r), clamp(g), clamp(b), 255]),
+    floats: new Float32Array([r, g, b, 1]),
+    width: 1,
+    height: 1,
+  };
+}
+
+function litRows(grid: ReturnType<typeof accumulateWave>, plane: number): number[] {
+  const rows: number[] = [];
+  for (let row = 0; row < grid.height; row++) {
+    if (grid.counts[plane * grid.height + row] > 0) rows.push(row);
+  }
+  return rows;
+}
+
+describe("accumulateWave — float samples", () => {
+  const HEIGHT = 100;
+
+  it("keeps a value above 1 out of the row a full-scale value lands in", () => {
+    const full = litRows(accumulateWave(floatSample(1, 1, 1), "rgb", false, 1, HEIGHT), 0);
+    const over = litRows(accumulateWave(floatSample(1.5, 1.5, 1.5), "rgb", false, 1, HEIGHT), 0);
+    expect(over).toHaveLength(1);
+    expect(over[0]).toBeGreaterThan(full[0]);
+  });
+
+  it("keeps a value below 0 out of the row black lands in", () => {
+    const black = litRows(accumulateWave(floatSample(0, 0, 0), "rgb", false, 1, HEIGHT), 0);
+    const under = litRows(accumulateWave(floatSample(-0.4, -0.4, -0.4), "rgb", false, 1, HEIGHT), 0);
+    expect(under[0]).toBeLessThan(black[0]);
+  });
+
+  it("puts a luma value above 1 above full scale", () => {
+    const full = litRows(accumulateWave(floatSample(1, 1, 1), "luma", false, 1, HEIGHT), 0);
+    const over = litRows(accumulateWave(floatSample(2, 2, 2), "luma", false, 1, HEIGHT), 0);
+    expect(over[0]).toBeGreaterThan(full[0]);
+  });
+
+  it("places level 0 and level 1 where levelFraction says", () => {
+    const black = litRows(accumulateWave(floatSample(0, 0, 0), "rgb", false, 1, HEIGHT), 0);
+    const full = litRows(accumulateWave(floatSample(1, 1, 1), "rgb", false, 1, HEIGHT), 0);
+    expect(black[0]).toBe(Math.round(levelFraction(0) * (HEIGHT - 1)));
+    expect(full[0]).toBe(Math.round(levelFraction(1) * (HEIGHT - 1)));
+    expect(levelFraction(1)).toBeLessThan(1);
+    expect(levelFraction(0)).toBeGreaterThan(0);
   });
 });

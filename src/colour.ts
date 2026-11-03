@@ -9,6 +9,8 @@ export type Rgb = readonly [number, number, number];
 /** RGBA, display-encoded sRGB. */
 export interface Sample {
   data: Uint8ClampedArray;
+  /** The same pixels as unclamped encoded floats (1 = 255), when the host could capture them; `data` is their clamp. */
+  floats?: Float32Array;
   width: number;
   height: number;
 }
@@ -53,7 +55,7 @@ export const D65_UV: readonly [number, number] = d65Uv();
 // --- Luma / tonal range ------------------------------------------------------
 
 /** Rec. 709 luma weights — also the Y' term inside the YCbCr projection. */
-function rec709Luma(rp: number, gp: number, bp: number): number {
+export function rec709Luma(rp: number, gp: number, bp: number): number {
   return 0.2126 * rp + 0.7152 * gp + 0.0722 * bp;
 }
 
@@ -116,7 +118,7 @@ export function linearToOklab(r: number, g: number, b: number): Rgb {
 
 const FULL_TURN_DEG = 360;
 
-/** Degrees counter-clockwise from +x, normalised to [0, 360). */
+/** Degrees counter-clockwise from +x, normalized to [0, 360). */
 export function angleDeg(x: number, y: number): number {
   const deg = (Math.atan2(y, x) * 180) / Math.PI;
   return deg < 0 ? deg + FULL_TURN_DEG : deg;
@@ -138,7 +140,7 @@ function rounded(n: number): string {
   return withMinusSign(String(Math.round(n)));
 }
 
-/** Math.round(angleDeg(x, y)), normalised so a rounded 360 prints as 0. */
+/** Math.round(angleDeg(x, y)), normalized so a rounded 360 prints as 0. */
 function angleLabel(x: number, y: number): string {
   return String(Math.round(angleDeg(x, y)) % FULL_TURN_DEG);
 }

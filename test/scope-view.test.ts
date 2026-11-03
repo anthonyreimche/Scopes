@@ -7,13 +7,25 @@ import type { Palette } from "../src/density";
 import type { VectorFrame } from "../src/draw-vector";
 import { discGeometry, drawVectorscope } from "../src/draw-vector";
 import type { WaveFrame } from "../src/draw-wave";
-import { drawWaveform, wavePlot } from "../src/draw-wave";
+import { drawWaveform, levelY, wavePlot } from "../src/draw-wave";
 import type { Mapping } from "../src/graticule";
 import { gamutOutline, hueLut, mapPoint } from "../src/graticule";
 import { cursorReadout, vectorReadout, waveReadout } from "../src/hover";
 import type { Prefs } from "../src/prefs";
 import { DEFAULT_PREFS, effectiveTrace } from "../src/prefs";
-import { LEVEL_GUTTER, PLOT_MARGIN, layerKey, paletteFor, paletteForBackground, waveHeight } from "../src/ScopeView";
+import { initRuntime } from "../src/runtime";
+import type { SafelightAPI, StateCreator, StoreApi } from "../src/safelight";
+import { initStore } from "../src/store";
+import {
+  LEVEL_GUTTER,
+  PLOT_MARGIN,
+  ScopeView,
+  layerKey,
+  paletteFor,
+  paletteForBackground,
+  waveHeight,
+  watchTheme,
+} from "../src/ScopeView";
 
 const DARK = {
   palette: { ink: [235, 235, 235], neutral: [200, 200, 200], lift: [255, 255, 255] },
@@ -408,7 +420,7 @@ describe("drawWaveform", () => {
     const plot = wavePlot(WAVE_WIDTH, WAVE_HEIGHT, "parade");
     expect(rec.count("fill")).toBe(3);
     expect(callsOf(rec, "arc").map((call) => argAt(call, 1))).toEqual(
-      HOVER_RGB.map((byte) => plot.y0 + (1 - byte / 255) * plot.height),
+      HOVER_RGB.map((byte) => levelY(plot, byte / 255)),
     );
     expect(callsOf(rec, "arc").map((call) => argAt(call, 0))).toEqual(
       plot.lanes.map((lane) => plot.x0 + lane.x0 + HOVER.x * lane.width),
@@ -482,7 +494,7 @@ describe("layerKey", () => {
     expect(keyFor(withOverride("range", "mids"))).not.toBe(BASE);
   });
 
-  it("changing colorize changes the key", () => {
+  it("changing colourize changes the key", () => {
     expect(keyFor(withOverride("colorize", false))).not.toBe(BASE);
   });
 
@@ -502,5 +514,147 @@ describe("layerKey", () => {
 
   it("a flipped dark flag changes the key", () => {
     expect(keyFor(DEFAULT_PREFS, ID, SIZE, false)).not.toBe(keyFor(DEFAULT_PREFS, ID, SIZE, true));
+  });
+});
+
+describe("watchTheme", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function rig(): {
+    observed: Array<{ target: unknown; options: unknown }>;
+    disconnects: number;
+    fire(): void;
+    themeListeners: Array<(state: { activeId: string }, prev: { activeId: string }) => void>;
+    unsubscribed: number;
+    root: object;
+    api: Parameters<typeof watchTheme>[0];
+  } {
+    const state = {
+      observed: [] as Array<{ target: unknown; options: unknown }>,
+      disconnects: 0,
+      callback: null as (() => void) | null,
+      themeListeners: [] as Array<(state: { activeId: string }, prev: { activeId: string }) => void>,
+      unsubscribed: 0,
+    };
+    const root = {};
+    vi.stubGlobal("document", { documentElement: root });
+    vi.stubGlobal(
+      "MutationObserver",
+      class {
+        constructor(callback: () => void) {
+          state.callback = callback;
+        }
+        observe(target: unknown, options: unknown): void {
+          state.observed.push({ target, options });
+        }
+        disconnect(): void {
+          state.disconnects++;
+        }
+      },
+    );
+    const api = {
+      subscribe(listener: (state: { activeId: string }, prev: { activeId: string }) => void): () => void {
+        state.themeListeners.push(listener);
+        return () => {
+          state.unsubscribed++;
+        };
+      },
+    } as unknown as Parameters<typeof watchTheme>[0];
+    return {
+      get observed() {
+        return state.observed;
+      },
+      get disconnects() {
+        return state.disconnects;
+      },
+      fire: () => state.callback?.(),
+      themeListeners: state.themeListeners,
+      get unsubscribed() {
+        return state.unsubscribed;
+      },
+      root,
+      api,
+    };
+  }
+
+  it("re-derives when the root element's style or class changes, as the accessibility overrides do", () => {
+    const r = rig();
+    const onChange = vi.fn();
+    watchTheme(r.api, onChange);
+
+    expect(r.observed).toHaveLength(1);
+    expect(r.observed[0].target).toBe(r.root);
+    expect(r.observed[0].options).toEqual({ attributes: true, attributeFilter: ["style", "class"] });
+
+    r.fire();
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("still re-derives on a theme switch, but not on an unchanged theme", () => {
+    const r = rig();
+    const onChange = vi.fn();
+    watchTheme(r.api, onChange);
+
+    r.themeListeners[0]({ activeId: "b" }, { activeId: "a" });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    r.themeListeners[0]({ activeId: "b" }, { activeId: "b" });
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops observing and unsubscribes on cleanup", () => {
+    const r = rig();
+    const stop = watchTheme(r.api, () => {});
+    stop();
+    expect(r.disconnects).toBe(1);
+    expect(r.unsubscribed).toBe(1);
+  });
+});
+
+function createStaticStore<T extends object>(init: StateCreator<T>): StoreApi<T> {
+  const state = init(() => {}, () => state);
+  function fakeStore(): T;
+  function fakeStore<U>(selector: (s: T) => U): U;
+  function fakeStore<U>(selector?: (s: T) => U): T | U {
+    return selector ? selector(state) : state;
+  }
+  fakeStore.getState = (): T => state;
+  fakeStore.setState = (): void => {};
+  fakeStore.subscribe = (): (() => void) => () => {};
+  return fakeStore;
+}
+
+describe("ScopeView canvas", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function canvasProps(scope: Prefs["scope"]): Record<string, unknown> {
+    const created: Array<{ type: unknown; props: Record<string, unknown> }> = [];
+    initRuntime({
+      react: {
+        useRef: (initial: unknown) => ({ current: initial }),
+        useState: (initial: unknown) => [initial, () => {}],
+        useEffect: () => {},
+        createElement: (type: unknown, props: Record<string, unknown>) => {
+          created.push({ type, props });
+          return null;
+        },
+      },
+      stores: { create: createStaticStore },
+    } as unknown as SafelightAPI);
+    initStore();
+    ScopeView({ prefs: { ...DEFAULT_PREFS, scope } });
+    const canvas = created.find((entry) => entry.type === "canvas");
+    if (canvas === undefined) throw new Error("no canvas created");
+    return canvas.props;
+  }
+
+  it("is an image with a label naming the scope", () => {
+    expect(canvasProps("vector").role).toBe("img");
+    expect(canvasProps("vector")["aria-label"]).toBe("Vectorscope of the open photo");
+    expect(canvasProps("wave")["aria-label"]).toBe("Waveform of the open photo");
+    expect(canvasProps("parade")["aria-label"]).toBe("RGB parade of the open photo");
   });
 });

@@ -7,7 +7,7 @@
 import type { Sample } from "./colour";
 import { SAMPLE_EDGES, livePrefs } from "./prefs";
 import { api } from "./runtime";
-import type { DevelopParams, DevelopStoreState, StoreApi } from "./safelight";
+import type { DevelopParams, DevelopStoreState, FloatFrame, StoreApi } from "./safelight";
 import { store } from "./store";
 
 export const THROTTLE_MS = 150;
@@ -43,12 +43,30 @@ export function readbackBitmap(bitmap: ImageBitmap, longEdge: number): Sample | 
   return { data, width, height };
 }
 
+/** Wraps a float frame as a Sample: the floats as captured, the bytes as their clamp. Null under 2 px in either dimension. */
+export function readbackFloatFrame(frame: FloatFrame): Sample | null {
+  const { data: floats, width, height } = frame;
+  if (width < 2 || height < 2) return null;
+
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = Math.round(floats[i] * 255);
+    data[i + 1] = Math.round(floats[i + 1] * 255);
+    data[i + 2] = Math.round(floats[i + 2] * 255);
+    data[i + 3] = 255;
+  }
+  return { data, floats, width, height };
+}
+
 // --- Scheduler -------------------------------------------------------------------
 
 export interface SamplerDeps {
   develop: StoreApi<DevelopStoreState>;
   capture(params: DevelopParams): Promise<ImageBitmap>;
   readback(bitmap: ImageBitmap): Sample | null;
+  /** Both present on a core that can capture floats; a null frame or a rejection falls back to `capture`. */
+  captureFloat?(params: DevelopParams): Promise<FloatFrame | null>;
+  readbackFloat?(frame: FloatFrame): Sample | null;
   publish(sample: Sample | null): void;
   throttleMs?: number;
 }
@@ -58,11 +76,12 @@ export interface SamplerDeps {
  * the last capture; a request while one is in flight, or while a timer is
  * already pending, coalesces into that one. A capture in flight when the
  * photo changes (or closes) is discarded when it resolves — its result is
- * for a photo that is no longer current. The returned stop function
+ * for a photo that is no longer current. With captureFloat the scopes read
+ * unclamped floats, so over-range highlights and shadows stay visible. The returned stop function
  * unsubscribes and drops any result still in flight.
  */
 export function startSampler(deps: SamplerDeps): () => void {
-  const { develop, capture, readback, publish } = deps;
+  const { develop, capture, readback, captureFloat, readbackFloat, publish } = deps;
   const throttle = deps.throttleMs ?? THROTTLE_MS;
 
   let stopped = false;
@@ -71,6 +90,22 @@ export function startSampler(deps: SamplerDeps): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let lastStart = -Infinity;
   let generation = 0;
+
+  interface Captured {
+    read(): Sample | null;
+    release(): void;
+  }
+
+  async function acquire(params: DevelopParams): Promise<Captured> {
+    if (captureFloat !== undefined && readbackFloat !== undefined) {
+      // A float capture that fails (no float targets, a GPU reset) must not
+      // blank the scopes when the 8-bit frame is still available.
+      const frame = await captureFloat(params).catch(() => null);
+      if (frame !== null) return { read: () => readbackFloat(frame), release() {} };
+    }
+    const bitmap = await capture(params);
+    return { read: () => readback(bitmap), release: () => bitmap.close?.() };
+  }
 
   function run(): void {
     timer = null;
@@ -81,21 +116,21 @@ export function startSampler(deps: SamplerDeps): () => void {
     lastStart = Date.now();
     const started = generation;
 
-    capture(previewParams ?? params)
+    acquire(previewParams ?? params)
       .then(
-        (bitmap) => {
+        (captured) => {
           const current = !stopped && started === generation;
           let sample: Sample | null;
           try {
-            sample = current ? readback(bitmap) : null;
+            sample = current ? captured.read() : null;
           } catch {
             // A throw here must not escape as an unhandled rejection: the
             // bitmap still needs closing, and a subscriber still needs its null.
-            bitmap.close?.();
+            captured.release();
             if (current) publish(null);
             return;
           }
-          bitmap.close?.();
+          captured.release();
           if (current) publish(sample);
         },
         () => {
@@ -177,11 +212,24 @@ export function createRetainer(start: () => () => void): () => () => void {
 
 // --- Live wiring -----------------------------------------------------------------
 
+const SCOPE_SPACE = { encoding: "perceptual", primaries: "rec709" } as const;
+
 function startLiveSampler(): () => void {
+  const { develop } = api();
+  const floatCapable = develop.captureFloatFrame !== undefined;
   return startSampler({
     develop: api().stores.useDevelopStore,
-    capture: (params) => api().develop.captureFrame(params),
+    capture: (params) => develop.captureFrame(params),
     readback: (bitmap) => readbackBitmap(bitmap, SAMPLE_EDGES[livePrefs().sampleSize]),
+    captureFloat: floatCapable
+      ? (params) =>
+          develop.captureFloatFrame!(params, {
+            space: SCOPE_SPACE,
+            point: "pre-output",
+            maxEdge: SAMPLE_EDGES[livePrefs().sampleSize],
+          })
+      : undefined,
+    readbackFloat: floatCapable ? readbackFloatFrame : undefined,
     publish: (sample) => store().getState().setSample(sample),
   });
 }

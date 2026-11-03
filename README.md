@@ -39,7 +39,7 @@ The graticule, each part switchable in Preferences:
 
 Under the plot: **Lin / Log** radius (log expands the neutral core),
 **1× / 2× / 4×** zoom, and **All / Shadows / Mids / Highlights** to isolate a
-tonal range, the same split the Color Grading wheels use. **Colorize** tints the
+tonal range, the same split the Color Grading wheels use. **Colourize** tints the
 trace by hue; off, the trace draws in the theme's ink.
 
 ### Waveform and parade
@@ -48,7 +48,7 @@ The waveform plots level against image column: 0 % at the bottom, 100 % at the
 top, brightness for how many pixels share a level. **Luma** draws Rec. 709
 luma, **RGB** overlays the three channels in the histogram's colours, and
 **Parade** puts the channels side by side. Level lines mark 0, 25, 50, 75 and
-100 %. Colorize on the luma trace paints each point in the image's own colour.
+100 %. Colourize on the luma trace paints each point in the image's own colour.
 
 ### Hover readout
 
@@ -61,7 +61,7 @@ coordinates under the cursor on the vectorscope, not the waveform.
 ## Controls
 
 - **Panel**: the scope picker (Vectorscope / Waveform / Parade), the model or
-  trace selector, Colorize, and for the vectorscope Lin/Log, zoom and the tonal
+  trace selector, Colourize, and for the vectorscope Lin/Log, zoom and the tonal
   range.
 - **Preferences ▸ Extensions ▸ Scopes**: sample resolution (Low 192, Medium 320
   or High 512 px long edge), trace intensity, and the graticule toggles (hue
@@ -85,7 +85,7 @@ visible window.
 
 - The scopes sample the Develop display pass through `api.develop.captureFrame`,
   so display-only overlays are included in the trace while they are shown: the
-  clipping indicators (the J key), a mask visualisation, and the Ctrl-view
+  clipping indicators (the J key), a mask visualization, and the Ctrl-view
   sharpen preview. Core's own histogram excludes them; switch them off to
   measure. A measurement-clean capture in core is the planned fix.
 - When zoomed in, the scopes show the visible window, not the whole image.
@@ -106,7 +106,7 @@ Planckian locus), density and waveform accumulation, the sampler's scheduling,
 the hover mapping, preference validation, the pure drawing helpers and the
 activation contract. Canvas drawing is verified in the app.
 
-## License
+## Licence
 
 MIT. The colour science is standard published maths: Rec. 709 YCbCr, CIE 1976
 u′v′, CIELAB, Oklab and the Kim et al. approximation of the Planckian locus. No

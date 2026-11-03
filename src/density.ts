@@ -128,7 +128,7 @@ export function paintDensity(
   for (let iy = 0; iy < size; iy++) {
     for (let ix = 0; ix < size; ix++) {
       const count = counts[cellIndex(ix, iy, size)];
-      if (count === 0) continue; // Uint8ClampedArray is zero-initialised: already transparent.
+      if (count === 0) continue; // Uint8ClampedArray is zero-initialized: already transparent.
 
       const v = toneMap(count, cells, total, intensity);
       const o = cellIndex(ix, iy, size) * 4;

@@ -34,6 +34,27 @@ export interface ThemeStoreState {
   activeId: string;
 }
 
+export interface StageSpace {
+  encoding?: "linear" | "perceptual";
+  primaries?: "rec709" | "rec2020";
+}
+
+/** RGBA floats, rows top-down, in `space`. Alpha is 1. */
+export interface FloatFrame {
+  data: Float32Array;
+  width: number;
+  height: number;
+  space: StageSpace;
+  point: "pre-output" | "output" | "scene";
+}
+
+export interface FloatCaptureOptions {
+  space?: StageSpace;
+  point?: FloatFrame["point"];
+  /** The frame's long edge in pixels. */
+  maxEdge?: number;
+}
+
 export interface OverlayRect {
   x: number;
   y: number;
@@ -181,6 +202,8 @@ export interface SafelightAPI {
   develop: {
     useDevelopOverlay(): DevelopOverlayState;
     captureFrame(params: DevelopParams): Promise<ImageBitmap>;
+    /** Undefined on cores older than 3.1.0. */
+    captureFloatFrame?(params: DevelopParams, opts?: FloatCaptureOptions): Promise<FloatFrame | null>;
   };
 }
 

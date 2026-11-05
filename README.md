@@ -39,7 +39,7 @@ The graticule, each part switchable in Preferences:
 
 Under the plot: **Lin / Log** radius (log expands the neutral core),
 **1× / 2× / 4×** zoom, and **All / Shadows / Mids / Highlights** to isolate a
-tonal range, the same split the Color Grading wheels use. **Colourize** tints the
+tonal range, the same split the Colour Grading wheels use. **Colourize** tints the
 trace by hue; off, the trace draws in the theme's ink.
 
 ### Waveform and parade

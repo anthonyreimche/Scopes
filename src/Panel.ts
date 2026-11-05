@@ -54,7 +54,7 @@ const RANGE_LABELS: Readonly<Record<TonalRange, string>> = {
   highlights: "Highlights",
 };
 
-const RANGE_TITLE = "Isolate a tonal range, as the Color Grading wheels split it";
+const RANGE_TITLE = "Isolate a tonal range, as the Colour Grading wheels split it";
 const COLORIZE_TITLE = "Colour the trace by hue";
 
 /** The controls only ever emit a value they were handed, but re-finding it in the order list keeps the pref types honest without a cast. */

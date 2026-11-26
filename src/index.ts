@@ -28,6 +28,7 @@ export function activate(host: SafelightAPI): void {
     title: "Scopes",
     component: ScopesPanel,
     defaultDock: { module: "develop", direction: "right", order: PANEL_ORDER, width: PANEL_WIDTH },
+    modules: ["develop"],
     onReset: resetPrefs,
   });
 

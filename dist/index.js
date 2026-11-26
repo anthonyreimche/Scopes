@@ -1508,6 +1508,7 @@ function Qr(e) {
 			order: Yr,
 			width: Xr
 		},
+		modules: ["develop"],
 		onReset: yt
 	}), e.registerSlot({
 		id: $,

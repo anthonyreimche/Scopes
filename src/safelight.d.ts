@@ -78,6 +78,8 @@ export interface PanelContribution {
     width?: number;
     height?: number;
   };
+  /** The modules the panel may be docked in; omitted, every module (Safelight 3.2.8). */
+  modules?: readonly string[];
   onReset?: () => void;
 }
 

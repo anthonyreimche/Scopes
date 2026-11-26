@@ -1,7 +1,7 @@
 {
   "id": "vectorscope",
   "name": "Vectorscope",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Scopes for Develop: a vectorscope in YCbCr, CIE u′v′, CIELAB and Oklab with colour-bar targets, skin-tone line, gamut outline and Planckian locus; a waveform and an RGB parade; a hover readout for the pixel under the cursor.",
   "author": "Anthony Reimche",
   "main": "dist/index.js",
